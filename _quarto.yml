@@ -1,0 +1,12 @@
+project:
+  type: website
+  output-dir: docs
+
+website:
+  title: "Parallel Computing"
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    self-contained: false
