@@ -25,8 +25,7 @@ jobs:
 
       - name: Install R packages
         run: |
-          lib <- .libPaths()[1]
-          install.packages(c("foreach", "doParallel", "MASS", "knitr", "rmarkdown", "kableExtra"), lib = lib)
+          install.packages(c("foreach", "doParallel", "MASS", "knitr", "rmarkdown", "kableExtra"), repos = "https://cloud.r-project.org", lib = "/opt/R/4.3.3/lib/R/library")
         shell: Rscript {0}
 
       - name: Set up Quarto
