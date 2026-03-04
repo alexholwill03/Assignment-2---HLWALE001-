@@ -24,9 +24,7 @@ jobs:
           r-version: "4.3.3"
 
       - name: Install R packages
-        run: |
-          install.packages(c("foreach", "doParallel", "MASS", "knitr", "rmarkdown", "kableExtra"), repos = "https://cloud.r-project.org", lib = "/opt/R/4.3.3/lib/R/library")
-        shell: Rscript {0}
+        run: sudo Rscript -e 'install.packages(c("foreach", "doParallel", "MASS", "knitr", "rmarkdown", "kableExtra"), repos = "https://cloud.r-project.org")'
 
       - name: Set up Quarto
         uses: quarto-dev/quarto-actions/setup@v2
