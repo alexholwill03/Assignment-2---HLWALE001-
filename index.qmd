@@ -1,0 +1,197 @@
+---
+title: "Parallel Computing"
+author: "Alex Holwill"
+format: html
+editor: visual
+---
+
+```{r}
+#| echo: true
+#| warning: false
+#libraries & data
+
+library(foreach)
+library(doParallel)
+library(MASS)
+library(knitr)
+library(kableExtra)
+
+
+gal <- galaxies
+```
+
+```{r}
+#| echo: true
+# Question 1
+
+n <- 100
+
+exp_samples_mean <- foreach(i = 1:100, .combine = rbind) %do% {
+  S = rexp(n, 1)
+  c(mean(S), var(S))
+}
+
+kable(exp_samples_mean, 
+      format = "html", 
+      digits = 2) |> 
+  kable_styling() |> 
+  scroll_box(height = "400px")
+
+
+
+```
+
+```{r}
+#| echo: true
+# Question 2
+
+B     <- 10000
+cores <- detectCores() - 1
+
+# ── 1. Serial bootstrap (replicate) ──────────────────────────────────────────
+t_serial <- system.time({
+  med_serial <- replicate(B, median(sample(gal, replace = TRUE)))
+})
+
+# ── 2. Parallel bootstrap – one iteration per worker task ────────────────────
+cl <- makeCluster(cores)
+registerDoParallel(cl)
+
+t_para_single <- system.time({
+  med_para_single <- foreach(
+    i        = 1:B,
+    .combine = c,
+    .packages = "MASS"
+  ) %dopar% {
+    median(sample(gal, replace = TRUE))
+  }
+})
+
+# ── 3. Parallel bootstrap – 1 000 iterations per chunk (reduced overhead) ────
+chunk_size <- 1000
+n_chunks   <- B / chunk_size          # = 10 chunks
+
+t_para_chunk <- system.time({
+  med_para_chunk <- foreach(
+    j        = 1:n_chunks,
+    .combine = c,
+    .packages = "MASS"
+  ) %dopar% {
+    # Each worker does 1 000 bootstrap medians locally
+    replicate(chunk_size, median(sample(gal, replace = TRUE)))
+  }
+})
+
+stopCluster(cl)
+
+# ── Results ───────────────────────────────────────────────────────────────────
+timing <- data.frame(
+  Method  = c("Serial (replicate)",
+              "Parallel – 1 task per iteration",
+              "Parallel – 1 000 iterations per chunk"),
+  Elapsed = c(t_serial["elapsed"],
+              t_para_single["elapsed"],
+              t_para_chunk["elapsed"])
+)
+print(timing)
+```
+
+The results clearly illustrate the overhead problem. Serial processing completed 10,000 bootstraps in 0.44s, while bad parallelisation, i.e. one task per iteration --- took 2.80s, roughly 6× slower, because the cost of dispatching 10,000 individual worker tasks far exceeded the cost of the bootstrap calculation itself. Chunking into 1,000 iterations per task reduced this overhead dramatically, completing in just 0.09s, i.e. 5× faster than serial and 31× faster than bad parallel. This confirms that parallel processing only pays off when the work per task is large relative to communication overhead; chunking achieves this by ensuring workers spend more time computing than communicating.
+
+```{r}
+#| echo: true
+# Question 3
+
+set.seed(2) # done so that the result doesn't change
+
+size <- 50
+mean <- 1
+bs_means <- foreach(i = 1:100, .combine = rbind) %do% {
+  sample_1 <- rexp(size, mean)
+  S1 <- replicate(100, sample(sample_1, replace = TRUE))
+  M_S1 <- c()
+  for (i in 1:100) {
+    M_S1[i] <- mean(S1[,i]) 
+  }
+  lower_q <- quantile(M_S1, probs = 0.025)
+  upper_q <- quantile(M_S1, probs = 0.975)
+  as.integer(M_S1 >= lower_q & M_S1 <= upper_q)
+}
+
+result <- c()
+for (i in 1:100) {
+  result <- mean(bs_means[,i])
+}
+
+mean(result)
+
+```
+
+Therefore, the estimated coverage is 92%.
+
+```{r}
+#| echo: true
+# Question 4
+
+set.seed(1234)
+
+results <- foreach(x = irnorm(n = 5, count = 3)) %do% {
+  max(x)
+}
+
+vals <- round(as.numeric(results), digits = 4)
+kable(vals, 
+      format = "markdown", 
+      digits = 4)
+
+
+```
+
+```{r}
+#| echo: true
+# Question 5
+# compare run times with parLapply, foreach & replicate
+
+cores <- detectCores() - 1
+cl <- makeCluster(cores)
+registerDoParallel(cl)
+
+# foreach
+
+t_foreach_serial <- system.time({
+  result_foreach_s <- foreach(
+    x = irnorm(n = 5, count = 3),
+    .combine = c
+  ) %do% {
+    max(x)
+  }
+})
+
+# parLapply
+
+t_parlapply <- system.time({
+  iter_list <- as.list(irnorm(n = 5, count = 3))  # materialise iterator
+  result_parlapply <- unlist(parLapply(cl, iter_list, max))
+})
+
+# replicate
+
+t_replicate <- system.time({
+  it <- irnorm(n = 5, count = 3)
+  result_replicate <- replicate(3, max(nextElem(it)))
+})
+
+stopCluster(cl)
+
+timing <- data.frame(
+  Method  = c("foreach",
+              "parLapply",
+              "replicate"),
+  Elapsed = c(t_foreach_serial["elapsed"],
+              t_parlapply["elapsed"],
+              t_replicate["elapsed"])
+)
+print(timing)
+```
+
+To get interpretable results we will need to increase the computational intensity, i.e. more vectors and/or more random variables.
